@@ -6,8 +6,47 @@
 #include "Parking.h"
 #include "utils.h"
 #include "ConfigLoad.h"
+#include "restclient-cpp/connection.h"
+#include "restclient-cpp/restclient.h"
 
 using namespace std;
+
+RestClient::Connection* getRestClient() {
+	RestClient::init();
+	
+	//get token
+	RestClient::Connection* conn = new RestClient::Connection("");
+	conn->get("/issue/oauth");
+
+
+	// we've got the token, now let's do other stuff
+	
+	RestClient::HeaderFields headers;
+	headers["X-OAUTH"] = "";
+	headers["Content-Type"] = "application/json";
+
+	return conn;
+}
+
+void postRequest(RestClient::Connection* conn, map<int, bool> data) 
+{
+	string postData = "{ "; 
+
+	for (int i = 0; i < data.size(); i++)
+	{
+		postData += "\"";
+		postData += to_string(i);
+		postData += "\" : ";
+		postData += data[i] ? "true" : "false";
+		if (i + 1 != data.size())
+			postData += ",";
+	}
+	postData += "}";
+
+	cout << postData << endl;
+
+	RestClient::Response r = conn->get("ddd");
+}
 
 int main(int argc, char** argv)
 {
@@ -65,8 +104,10 @@ int main(int argc, char** argv)
 	char c;  // Char from keyboard
 	ostringstream oss;
 	cv::Size blur_kernel = cv::Size(5, 5); 
-	cv::namedWindow("Video", cv::WINDOW_AUTOSIZE);	
+	//cv::namedWindow("Video", cv::WINDOW_AUTOSIZE);	
 
+
+	RestClient::Connection* conn = getRestClient();
 	// Loop through Video
 	while (cap.isOpened())
 	{
@@ -86,8 +127,10 @@ int main(int argc, char** argv)
         cout << ConfigLoad::options["DETECT_PARKING"];
         printf("\n");
         
+		
 		if (ConfigLoad::options["DETECT_PARKING"] == "true")
 		{
+			map<int, bool> pStatus;
 			for (Parking& park : parking_data)
 			{
 				// Check if parking is occupied
@@ -96,29 +139,32 @@ int main(int argc, char** argv)
 				delta = cv::mean(cv::abs(laplacian), park.getMask());
                 park.setStatus( delta[0] < atof(ConfigLoad::options["PARK_LAPLACIAN_TH"].c_str()) );
 				printf("| %d: d=%-5.1f", park.getId(), delta[0]);
+				pStatus[park.getId()] = delta[0] > atof(ConfigLoad::options["PARK_LAPLACIAN_TH"].c_str());
+
 			}
+			postRequest(conn, pStatus);
 			printf("\n");
 		}
 
 		// Parking Overlay
-		for (Parking park : parking_data)
-		{
-			if (park.getStatus())  color = cv::Scalar(0, 255, 0);
-			else color = cv::Scalar(0, 0, 255);
-			cv::drawContours(frame_out, park.getContourPoints(), -1, color, 2, cv::LINE_AA);
+		// for (Parking park : parking_data)
+		// {
+		// 	if (park.getStatus())  color = cv::Scalar(0, 255, 0);
+		// 	else color = cv::Scalar(0, 0, 255);
+		// 	cv::drawContours(frame_out, park.getContourPoints(), -1, color, 2, cv::LINE_AA);
 
-			// Parking ID overlay
-			cv::Point p = park.getCenterPoint();
-			cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x + 1, p.y + 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-			cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x - 1, p.y - 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-			cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x - 1, p.y + 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-			cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x + 1, p.y - 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-			cv::putText(frame_out, to_string(park.getId()), p, cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
-		}
+		// 	// Parking ID overlay
+		// 	cv::Point p = park.getCenterPoint();
+		// 	cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x + 1, p.y + 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+		// 	cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x - 1, p.y - 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+		// 	cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x - 1, p.y + 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+		// 	cv::putText(frame_out, to_string(park.getId()), cv::Point(p.x + 1, p.y - 1), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+		// 	cv::putText(frame_out, to_string(park.getId()), p, cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+		// }
 		// Text Overlay		
-		oss.str("");
-		oss << (unsigned long int)video_pos_frame << "/" << total_frames;
-		cv::putText(frame_out, oss.str(), cv::Point(5, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
+		// oss.str("");
+		// oss << (unsigned long int)video_pos_frame << "/" << total_frames;
+		// cv::putText(frame_out, oss.str(), cv::Point(5, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
 
 		// Save Video
 		if (ConfigLoad::options["SAVE_VIDEO"] == "true")
@@ -127,10 +173,11 @@ int main(int argc, char** argv)
 		}
 
 		// Show Video
-		cv::imshow("Video", frame_out);
+		//cv::imshow("Video", frame_out);
 		c = (char)cv::waitKey(delay);
 		if (c == 27) break;
 	}
 
 	return 0;
 }
+
